@@ -1,13 +1,14 @@
 # test_model.py
 """
-Script de prueba del modelo YOLOv8
+Script de prueba - VERSIÓN SIMPLIFICADA
+Solo detecta CASCOS - Si no hay casco visible = puede haber peligro
 """
 
 import cv2
 import sys
 import time
-import argparse
 from pathlib import Path
+import numpy as np
 
 
 def header(text):
@@ -17,16 +18,11 @@ def header(text):
 
 
 def test_webcam(model_path, confidence=0.5):
-    """Prueba con cámara web"""
-    header("🧪 TEST - CÁMARA WEB")
+    """Prueba con cámara - SOLO detecta cascos"""
+    header("🧪 TEST - DETECCIÓN DE CASCOS")
     
-    # Verificar modelo
     if not model_path.exists():
         print(f"\n❌ Modelo no encontrado: {model_path}")
-        print("\n📝 Solución:")
-        print("   1. Entrena en Google Colab")
-        print("   2. Descarga best.pt")
-        print("   3. Colócalo en models/")
         return
     
     size_mb = model_path.stat().st_size / (1024 * 1024)
@@ -44,7 +40,6 @@ def test_webcam(model_path, confidence=0.5):
     
     # Abrir cámara
     print("\n🎥 Abriendo cámara...")
-    
     cap = None
     for idx in [0, 1, 2]:
         cap = cv2.VideoCapture(idx)
@@ -66,191 +61,26 @@ def test_webcam(model_path, confidence=0.5):
     
     header("🎯 PRUEBA EN VIVO")
     print("🎮 Controles:")
-    print("   Q - Salir")
-    print("   S - Screenshot")
-    print("   + - Aumentar confianza")
-    print("   - - Disminuir confianza")
-    print("   P - Pausar")
+    print("   Q/ESC  - Salir")
+    print("   S      - Screenshot")
+    print("   +/-    - Ajustar confianza")
+    print("")
+    print("📊 LÓGICA:")
+    print("   🟢 CASCO DETECTADO = Seguro")
+    print("   🟡 SIN DETECCIÓN   = Verificar área")
     print("=" * 70)
     
-    paused = False
     fps = 0
     fps_time = time.time()
     fps_count = 0
     screenshot_num = 0
     
-    try:
-        while True:
-            if not paused:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                # FPS
-                fps_count += 1
-                if time.time() - fps_time >= 1.0:
-                    fps = fps_count
-                    fps_count = 0
-                    fps_time = time.time()
-                
-                # Detección
-                t0 = time.time()
-                results = model(frame, conf=confidence, verbose=False)
-                inf_ms = (time.time() - t0) * 1000
-                
-                # Dibujar
-                annotated = results[0].plot()
-                
-                # Contar por clase
-                counts = {}
-                for box in results[0].boxes:
-                    cls = model.names[int(box.cls[0])]
-                    counts[cls] = counts.get(cls, 0) + 1
-            else:
-                annotated = frame.copy()
-                inf_ms = 0
-            
-            # Info panel
-            panel_h = 120
-            overlay = annotated.copy()
-            cv2.rectangle(overlay, (0, 0), (400, panel_h), (0, 0, 0), -1)
-            cv2.addWeighted(overlay, 0.7, annotated, 0.3, 0, annotated)
-            
-            info = [
-                f"Modelo: {model_path.name}",
-                f"Confianza: {confidence:.2f}",
-                f"Detecciones: {len(results[0].boxes) if not paused else 0}",
-                f"FPS: {fps} | Inf: {inf_ms:.1f}ms",
-            ]
-            
-            if paused:
-                info.append("PAUSADO")
-            
-            y = 25
-            for text in info:
-                color = (0, 255, 255) if "PAUSADO" not in text else (0, 165, 255)
-                cv2.putText(annotated, text, (10, y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-                y += 25
-            
-            # Mostrar
-            cv2.imshow('TEST Detección de Cascos (Q para salir)', annotated)
-            
-            # Controles
-            key = cv2.waitKey(1) & 0xFF
-            
-            if key == ord('q'):
-                break
-            elif key == ord('s'):
-                screenshot_num += 1
-                cv2.imwrite(f'test_screenshot_{screenshot_num}.jpg', annotated)
-                print(f"📸 Screenshot {screenshot_num} guardado")
-            elif key in [ord('+'), ord('=')]:
-                confidence = min(0.95, confidence + 0.05)
-                print(f"🔼 Confianza: {confidence:.2f}")
-            elif key in [ord('-'), ord('_')]:
-                confidence = max(0.05, confidence - 0.05)
-                print(f"🔽 Confianza: {confidence:.2f}")
-            elif key == ord('p'):
-                paused = not paused
-                print(f"{'⏸️ Pausado' if paused else '▶️ Reanudado'}")
+    window_name = 'Deteccion de Cascos - Q/ESC para salir'
     
-    except KeyboardInterrupt:
-        print("\n⚠️ Interrumpido")
-    
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-        print("\n✅ Prueba completada")
-
-
-def test_image(model_path, image_path, confidence=0.5):
-    """Prueba con imagen"""
-    header("🖼️ TEST - IMAGEN")
-    
-    if not model_path.exists():
-        print(f"❌ Modelo no encontrado: {model_path}")
-        return
-    
-    image_path = Path(image_path)
-    if not image_path.exists():
-        print(f"❌ Imagen no encontrada: {image_path}")
-        return
-    
-    print(f"✅ Modelo: {model_path}")
-    print(f"✅ Imagen: {image_path}")
-    
-    from ultralytics import YOLO
-    model = YOLO(str(model_path))
-    
-    print("\n📸 Procesando...")
-    t0 = time.time()
-    results = model(str(image_path), conf=confidence)
-    inf_ms = (time.time() - t0) * 1000
-    
-    boxes = results[0].boxes
-    print(f"\n🎯 Resultados:")
-    print(f"   Detecciones: {len(boxes)}")
-    print(f"   Tiempo: {inf_ms:.1f}ms")
-    
-    if len(boxes) > 0:
-        print("\n📊 Detecciones:")
-        for i, box in enumerate(boxes, 1):
-            cls = model.names[int(box.cls[0])]
-            conf = float(box.conf[0])
-            print(f"   {i}. {cls}: {conf:.2%}")
-    
-    # Mostrar
-    annotated = results[0].plot()
-    cv2.imshow('Resultado - Presiona tecla para cerrar', annotated)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    
-    # Guardar
-    output = f"result_{image_path.stem}.jpg"
-    cv2.imwrite(output, annotated)
-    print(f"\n💾 Guardado: {output}")
-
-
-def test_video(model_path, video_path, confidence=0.5, save=False):
-    """Prueba con video"""
-    header("🎬 TEST - VIDEO")
-    
-    if not model_path.exists():
-        print(f"❌ Modelo no encontrado: {model_path}")
-        return
-    
-    video_path = Path(video_path)
-    if not video_path.exists():
-        print(f"❌ Video no encontrado: {video_path}")
-        return
-    
-    from ultralytics import YOLO
-    model = YOLO(str(model_path))
-    
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        print("❌ Error abriendo video")
-        return
-    
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    print(f"📹 Video: {w}x{h} @ {fps}fps, {total} frames")
-    
-    out = None
-    if save:
-        output = f"result_{video_path.stem}.mp4"
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output, fourcc, fps, (w, h))
-        print(f"💾 Guardando en: {output}")
-    
-    print("\n⏳ Procesando (Q para detener)...")
-    
-    frame_num = 0
-    t0 = time.time()
+    # Colores
+    GREEN = (0, 255, 0)
+    YELLOW = (0, 255, 255)
+    WHITE = (255, 255, 255)
     
     try:
         while True:
@@ -258,89 +88,135 @@ def test_video(model_path, video_path, confidence=0.5, save=False):
             if not ret:
                 break
             
-            frame_num += 1
+            h_frame, w_frame = frame.shape[:2]
             
+            # FPS
+            fps_count += 1
+            if time.time() - fps_time >= 1.0:
+                fps = fps_count
+                fps_count = 0
+                fps_time = time.time()
+            
+            # Detección
+            t0 = time.time()
             results = model(frame, conf=confidence, verbose=False)
-            annotated = results[0].plot()
+            inf_ms = (time.time() - t0) * 1000
             
-            # Progreso
-            pct = (frame_num / total) * 100
-            cv2.putText(annotated, f"{frame_num}/{total} ({pct:.1f}%)",
-                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            # Procesar detecciones
+            cascos_detectados = 0
             
-            cv2.imshow('Procesando Video (Q para detener)', annotated)
+            for box in results[0].boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                conf = float(box.conf[0])
+                
+                # Filtrar detecciones muy pequeñas (probablemente falsos positivos)
+                box_w = x2 - x1
+                box_h = y2 - y1
+                area = box_w * box_h
+                
+                # Ignorar si es muy pequeño o tiene proporciones raras
+                if area < 3000:  # Muy pequeño
+                    continue
+                if box_w / max(box_h, 1) > 3 or box_h / max(box_w, 1) > 3:  # Proporción rara
+                    continue
+                
+                cascos_detectados += 1
+                
+                # Dibujar casco (VERDE)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), GREEN, 3)
+                label = f"CASCO {conf:.0%}"
+                
+                # Fondo del label
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                cv2.rectangle(frame, (x1, y1-30), (x1+tw+10, y1), GREEN, -1)
+                cv2.putText(frame, label, (x1+5, y1-8),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, WHITE, 2)
             
-            if out:
-                out.write(annotated)
+            # Panel de información superior
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (0, 0), (320, 110), (0, 0, 0), -1)
+            cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
             
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            # Info
+            cv2.putText(frame, f"Modelo: {model_path.name}", (10, 25),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.55, YELLOW, 2)
+            cv2.putText(frame, f"Confianza: {confidence:.0%}", (10, 50),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.55, YELLOW, 2)
+            cv2.putText(frame, f"Cascos detectados: {cascos_detectados}", (10, 75),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.55, GREEN if cascos_detectados > 0 else YELLOW, 2)
+            cv2.putText(frame, f"FPS: {fps} | Inf: {inf_ms:.0f}ms", (10, 100),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.55, WHITE, 2)
+            
+            # Estado en la parte inferior
+            if cascos_detectados > 0:
+                # Barra verde - SEGURO
+                cv2.rectangle(frame, (0, h_frame-50), (w_frame, h_frame), GREEN, -1)
+                cv2.putText(frame, f"SEGURO - {cascos_detectados} CASCO(S) DETECTADO(S)",
+                           (w_frame//2-180, h_frame-18), cv2.FONT_HERSHEY_SIMPLEX,
+                           0.7, WHITE, 2)
+            else:
+                # Barra amarilla - SIN DETECCIÓN
+                cv2.rectangle(frame, (0, h_frame-50), (w_frame, h_frame), YELLOW, -1)
+                cv2.putText(frame, "VERIFICAR - NO SE DETECTAN CASCOS EN EL AREA",
+                           (w_frame//2-220, h_frame-18), cv2.FONT_HERSHEY_SIMPLEX,
+                           0.7, (0, 0, 0), 2)
+            
+            # Mostrar
+            cv2.imshow(window_name, frame)
+            
+            # Controles
+            key = cv2.waitKey(1) & 0xFF
+            
+            if key == ord('q') or key == ord('Q') or key == 27:
+                print("\n👋 Saliendo...")
                 break
+            elif key == ord('s') or key == ord('S'):
+                screenshot_num += 1
+                filename = f'screenshot_{screenshot_num}.jpg'
+                cv2.imwrite(filename, frame)
+                print(f"📸 Screenshot: {filename}")
+            elif key in [ord('+'), ord('=')]:
+                confidence = min(0.95, confidence + 0.05)
+                print(f"🔼 Confianza: {confidence:.0%}")
+            elif key in [ord('-'), ord('_')]:
+                confidence = max(0.1, confidence - 0.05)
+                print(f"🔽 Confianza: {confidence:.0%}")
             
-            if frame_num % 30 == 0:
-                print(f"   {frame_num}/{total} ({pct:.1f}%)")
+            # Verificar si se cerró la ventana
+            try:
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                    break
+            except:
+                break
+    
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrumpido")
     
     finally:
-        elapsed = time.time() - t0
         cap.release()
-        if out:
-            out.release()
         cv2.destroyAllWindows()
-        
-        print(f"\n✅ Completado")
-        print(f"   Frames: {frame_num}/{total}")
-        print(f"   Tiempo: {elapsed:.1f}s")
-        print(f"   FPS: {frame_num/elapsed:.1f}")
+        for _ in range(5):
+            cv2.waitKey(1)
+        print("\n✅ Prueba completada")
+        print("\n💡 Este modelo SOLO detecta cascos.")
+        print("   Para detectar 'personas sin casco' necesitas un modelo")
+        print("   entrenado con DOS clases: 'con_casco' y 'sin_casco'")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Test del modelo YOLOv8')
-    parser.add_argument('input', nargs='?', help='Imagen o video')
-    parser.add_argument('--model', default='models/best.pt', help='Ruta al modelo')
-    parser.add_argument('--confidence', type=float, default=0.5, help='Confianza')
-    parser.add_argument('--video', action='store_true', help='Procesar como video')
-    parser.add_argument('--save', action='store_true', help='Guardar resultado')
-    
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', default='models/best.pt')
+    parser.add_argument('--confidence', type=float, default=0.5)
     args = parser.parse_args()
-    model_path = Path(args.model)
     
-    if not args.input:
-        test_webcam(model_path, args.confidence)
-    else:
-        input_path = Path(args.input)
-        ext = input_path.suffix.lower()
-        
-        if args.video or ext in ['.mp4', '.avi', '.mov', '.mkv']:
-            test_video(model_path, input_path, args.confidence, args.save)
-        else:
-            test_image(model_path, input_path, args.confidence)
-    
-    print("\n💡 Si funciona aquí, ejecuta: python main.py")
+    test_webcam(Path(args.model), args.confidence)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h', 'help']:
-        header("📖 USO")
-        print("""
-🎥 Cámara web:
-   python test_model.py
-   python test_model.py --confidence 0.6
-
-🖼️ Imagen:
-   python test_model.py imagen.jpg
-
-🎬 Video:
-   python test_model.py video.mp4 --video --save
-
-📝 Opciones:
-   --model PATH       Ruta al modelo
-   --confidence FLOAT Confianza mínima (0-1)
-   --video            Procesar como video
-   --save             Guardar resultado
-""")
-    else:
-        try:
-            main()
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
+    try:
+        main()
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()

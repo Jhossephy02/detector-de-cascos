@@ -2,6 +2,7 @@
 """
 Sistema de Detección de Cascos de Seguridad con YOLOv8
 SENATI - Ingeniería Civil
+CORREGIDO: Detecta cuando NO hay casco visible
 """
 
 import cv2
@@ -22,20 +23,15 @@ except ImportError:
 
 # ==================== LOGGING ====================
 def setup_logging():
-    """Configura el sistema de logs"""
     logger = logging.getLogger('HelmetDetection')
     logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
     
-    # Handler archivo
     fh = RotatingFileHandler(
-        LOG_FILE,
-        maxBytes=LOG_MAX_SIZE_MB * 1024 * 1024,
-        backupCount=LOG_BACKUP_COUNT,
-        encoding='utf-8'
+        LOG_FILE, maxBytes=LOG_MAX_SIZE_MB * 1024 * 1024,
+        backupCount=LOG_BACKUP_COUNT, encoding='utf-8'
     )
     fh.setFormatter(logging.Formatter(LOG_FORMAT, LOG_DATE_FORMAT))
     
-    # Handler consola
     ch = logging.StreamHandler()
     ch.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
     
@@ -46,7 +42,6 @@ def setup_logging():
 logger = setup_logging()
 
 
-# ==================== SISTEMA PRINCIPAL ====================
 class HelmetDetectionSystem:
     """Sistema de detección de cascos"""
     
@@ -55,7 +50,6 @@ class HelmetDetectionSystem:
         logger.info("Iniciando Sistema de Detección de Cascos")
         logger.info("=" * 60)
         
-        # Validar configuración
         errors, warnings = validate_config()
         for w in warnings:
             logger.warning(w)
@@ -66,7 +60,6 @@ class HelmetDetectionSystem:
                 logger.critical("Modelo no encontrado. Abortando.")
                 sys.exit(1)
         
-        # Componentes
         self.model = self._load_model()
         self.audio = self._init_audio() if ENABLE_AUDIO else None
         self.twilio = self._init_twilio() if ENABLE_WHATSAPP else None
@@ -78,16 +71,22 @@ class HelmetDetectionSystem:
         self.alerts_sent = 0
         self.frame_count = 0
         self.start_time = time.time()
-        
-        # FPS
         self.fps = 0
         self.fps_time = time.time()
         self.fps_frames = 0
         
+        # Detector de personas (para saber si hay alguien sin casco)
+        self.person_detector = None
+        self._init_person_detector()
+        
         logger.info("✅ Sistema listo")
+        logger.info("")
+        logger.info("⚠️  LÓGICA DE DETECCIÓN:")
+        logger.info("   - VERDE: Persona CON casco detectado")
+        logger.info("   - ROJO:  Persona visible SIN casco")
+        logger.info("")
     
     def _load_model(self):
-        """Carga el modelo YOLOv8"""
         try:
             from ultralytics import YOLO
             logger.info(f"Cargando modelo: {MODEL_PATH}")
@@ -98,13 +97,21 @@ class HelmetDetectionSystem:
             logger.error(f"Error cargando modelo: {e}")
             sys.exit(1)
     
+    def _init_person_detector(self):
+        """Inicializa detector de personas con Haar Cascade"""
+        try:
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            logger.info("✅ Detector de rostros inicializado")
+        except Exception as e:
+            logger.warning(f"Detector de rostros no disponible: {e}")
+            self.face_cascade = None
+    
     def _init_audio(self):
-        """Inicializa el sistema de audio"""
         try:
             import pygame
             pygame.mixer.init()
             
-            # Crear sonido si no existe
             if not ALERT_SOUND_PATH.exists():
                 self._create_alert_sound()
             
@@ -117,24 +124,18 @@ class HelmetDetectionSystem:
             return None
     
     def _create_alert_sound(self):
-        """Crea un sonido de alerta básico"""
         try:
             from scipy.io import wavfile
-            
             sr = 44100
             t = np.linspace(0, ALERT_DURATION, int(sr * ALERT_DURATION))
-            freq = 880
-            envelope = np.exp(-3 * t)
-            audio = np.sin(2 * np.pi * freq * t) * envelope * 0.3
+            audio = np.sin(2 * np.pi * 880 * t) * np.exp(-3 * t) * 0.3
             audio = (audio * 32767).astype(np.int16)
-            
             wavfile.write(str(ALERT_SOUND_PATH), sr, audio)
-            logger.info(f"✅ Archivo de alerta creado")
+            logger.info("✅ Archivo de alerta creado")
         except Exception as e:
             logger.warning(f"No se pudo crear audio: {e}")
     
     def _init_twilio(self):
-        """Inicializa Twilio para WhatsApp"""
         try:
             from twilio.rest import Client
             client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
@@ -146,7 +147,6 @@ class HelmetDetectionSystem:
             return None
     
     def play_alert(self):
-        """Reproduce alerta de audio"""
         if self.audio:
             try:
                 self.audio.play()
@@ -154,16 +154,13 @@ class HelmetDetectionSystem:
             except Exception as e:
                 logger.error(f"Error audio: {e}")
     
-    def send_whatsapp(self, confidence, count=1):
-        """Envía alerta por WhatsApp"""
+    def send_whatsapp(self, confidence):
         if not self.twilio:
             return False
         
-        # Cooldown
         if self.last_alert:
             elapsed = (datetime.now() - self.last_alert).total_seconds()
             if elapsed < ALERT_COOLDOWN:
-                logger.debug(f"Cooldown: {ALERT_COOLDOWN - elapsed:.0f}s")
                 return False
         
         try:
@@ -172,7 +169,8 @@ class HelmetDetectionSystem:
                 fecha=now.strftime("%d/%m/%Y"),
                 hora=now.strftime("%H:%M:%S"),
                 ubicacion=DEFAULT_LOCATION,
-                confianza=int(confidence * 100)
+                confianza=int(confidence * 100),
+                num_personas=1
             )
             
             message = self.twilio.messages.create(
@@ -190,7 +188,6 @@ class HelmetDetectionSystem:
             return False
     
     def save_frame(self, frame, is_alert=False):
-        """Guarda el frame"""
         if not SAVE_DETECTIONS:
             return
         if SAVE_ONLY_ALERTS and not is_alert:
@@ -198,14 +195,15 @@ class HelmetDetectionSystem:
         
         try:
             ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            prefix = "alert" if is_alert else "det"
+            prefix = "ALERTA" if is_alert else "det"
             path = DETECTIONS_DIR / f"{prefix}_{ts}.jpg"
             cv2.imwrite(str(path), frame)
+            if is_alert:
+                logger.info(f"📸 Captura guardada: {path.name}")
         except Exception as e:
             logger.error(f"Error guardando: {e}")
     
     def calc_fps(self):
-        """Calcula FPS"""
         self.fps_frames += 1
         elapsed = time.time() - self.fps_time
         if elapsed >= 1.0:
@@ -214,160 +212,168 @@ class HelmetDetectionSystem:
             self.fps_time = time.time()
         return self.fps
     
-    def is_without_helmet(self, cls, name):
-        """Determina si la detección es 'sin casco'"""
-        name_low = name.lower()
-        # Palabras clave que indican sin casco
-        no_helmet_kw = ['sin', 'without', 'no_', 'no-', 'missing']
-        return any(kw in name_low for kw in no_helmet_kw) or cls == 1
+    def detect_faces(self, frame):
+        """Detecta rostros en el frame"""
+        if self.face_cascade is None:
+            return []
+        
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+        )
+        return faces
     
     def process_frame(self, frame):
-        """Procesa un frame"""
         self.frame_count += 1
+        h, w = frame.shape[:2]
         
-        # Inferencia
+        # Detectar cascos
         results = self.model(frame, conf=CONFIDENCE_THRESHOLD, 
                            iou=IOU_THRESHOLD, verbose=False)
         
-        person_no_helmet = False
-        max_conf = 0
-        det_count = 0
-        
+        helmet_boxes = []
         for result in results:
             for box in result.boxes:
-                cls = int(box.cls[0])
-                conf = float(box.conf[0])
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
+                conf = float(box.conf[0])
+                cls = int(box.cls[0])
+                class_name = self.model.names[cls]
                 
-                # Filtrar por área
                 area = (x2 - x1) * (y2 - y1)
                 if area < MIN_BOX_AREA:
                     continue
                 
-                class_name = self.model.names[cls]
-                no_helmet = self.is_without_helmet(cls, class_name)
-                
-                det_count += 1
-                
-                if no_helmet:
-                    person_no_helmet = True
-                    max_conf = max(max_conf, conf)
-                    color = COLOR_WITHOUT_HELMET
-                else:
-                    color = COLOR_WITH_HELMET
-                
-                # Dibujar
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, BOX_THICKNESS)
-                
-                label = f"{class_name} {conf:.2f}"
-                (tw, th), _ = cv2.getTextSize(label, FONT, FONT_SCALE, TEXT_THICKNESS)
-                
-                ly = y1 - 10 if y1 > 30 else y1 + th + 10
-                cv2.rectangle(frame, (x1, ly - th - 5), 
-                            (x1 + tw + 10, ly + 5), color, -1)
-                cv2.putText(frame, label, (x1 + 5, ly), 
-                           FONT, FONT_SCALE, COLOR_TEXT, TEXT_THICKNESS)
-                
+                helmet_boxes.append((x1, y1, x2, y2, conf, class_name))
                 self.total_detections += 1
+                
+                # Dibujar casco detectado (VERDE)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), COLOR_WITH_HELMET, 3)
+                label = f"{class_name} {conf:.0%}"
+                cv2.putText(frame, label, (x1, y1-10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WITH_HELMET, 2)
         
-        # Alertas
-        if person_no_helmet:
+        # Detectar rostros
+        faces = self.detect_faces(frame)
+        faces_without_helmet = []
+        
+        for (fx, fy, fw, fh) in faces:
+            face_center_y = fy + fh // 2
+            face_center_x = fx + fw // 2
+            
+            # Verificar si este rostro tiene un casco cerca (arriba)
+            has_helmet = False
+            for (hx1, hy1, hx2, hy2, conf, name) in helmet_boxes:
+                # El casco debe estar arriba del rostro
+                helmet_center_x = (hx1 + hx2) // 2
+                
+                # Verificar alineación horizontal y que el casco esté arriba
+                if abs(helmet_center_x - face_center_x) < fw and hy2 < face_center_y + 50:
+                    has_helmet = True
+                    break
+            
+            if not has_helmet:
+                faces_without_helmet.append((fx, fy, fw, fh))
+                # Dibujar rostro SIN casco (ROJO)
+                cv2.rectangle(frame, (fx, fy), (fx+fw, fy+fh), COLOR_WITHOUT_HELMET, 3)
+                cv2.putText(frame, "SIN CASCO!", (fx, fy-10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WITHOUT_HELMET, 2)
+        
+        # Lógica de alertas
+        person_without_helmet = len(faces_without_helmet) > 0
+        
+        if person_without_helmet:
             self.frames_no_helmet += 1
             self._draw_warning(frame)
             
             if self.frames_no_helmet == FRAMES_THRESHOLD:
-                logger.warning("🚨 ALERTA: Persona sin casco")
+                logger.warning("🚨 ALERTA: Persona SIN CASCO detectada")
                 self.play_alert()
-                self.send_whatsapp(max_conf, det_count)
+                self.send_whatsapp(0.9)
                 self.save_frame(frame, is_alert=True)
         else:
             if self.frames_no_helmet > 0:
-                logger.info("✅ Situación normalizada")
+                logger.info("✅ Situación normalizada - Casco detectado")
             self.frames_no_helmet = 0
-            if det_count > 0:
-                self.save_frame(frame, is_alert=False)
         
-        self._draw_info(frame, det_count)
+        # Panel de información
+        self._draw_info(frame, len(helmet_boxes), len(faces_without_helmet))
+        
         return frame
     
     def _draw_warning(self, frame):
-        """Dibuja advertencia en pantalla"""
         h, w = frame.shape[:2]
         text = "¡ALERTA! PERSONA SIN CASCO"
         
-        (tw, th), _ = cv2.getTextSize(text, FONT, 1.2, 3)
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)
         tx = (w - tw) // 2
         ty = 50
         
         # Parpadeo
-        alpha = 0.7 if (self.frame_count // 10) % 2 == 0 else 0.5
+        alpha = 0.8 if (self.frame_count // 8) % 2 == 0 else 0.5
         overlay = frame.copy()
-        cv2.rectangle(overlay, (tx - 20, ty - 40), 
-                     (tx + tw + 20, ty + 20), COLOR_WITHOUT_HELMET, -1)
+        cv2.rectangle(overlay, (tx - 20, ty - 40), (tx + tw + 20, ty + 20), 
+                     COLOR_WITHOUT_HELMET, -1)
         cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
         
-        cv2.putText(frame, text, (tx, ty), FONT, 1.2, COLOR_TEXT, 3)
+        cv2.putText(frame, text, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 
+                   COLOR_TEXT, 3)
         
         # Contador
-        counter = f"{self.frames_no_helmet}/{FRAMES_THRESHOLD}"
-        cv2.putText(frame, counter, (tx, ty + 35), FONT, 0.7, COLOR_TEXT, 2)
+        counter = f"Frames: {self.frames_no_helmet}/{FRAMES_THRESHOLD}"
+        cv2.putText(frame, counter, (tx + 50, ty + 35), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_TEXT, 2)
     
-    def _draw_info(self, frame, det_count):
-        """Panel de información"""
+    def _draw_info(self, frame, cascos, sin_casco):
         h, w = frame.shape[:2]
         
-        # Panel
-        panel_h = 100
+        # Panel inferior
+        panel_h = 80
         overlay = frame.copy()
-        cv2.rectangle(overlay, (0, h - panel_h), (w, h), COLOR_BACKGROUND, -1)
+        cv2.rectangle(overlay, (0, h - panel_h), (w, h), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
         
         fps = self.calc_fps()
         elapsed = time.time() - self.start_time
         mins, secs = divmod(int(elapsed), 60)
-        hrs, mins = divmod(mins, 60)
         
-        # Info izquierda
-        y = h - panel_h + 25
-        info_left = [
-            f"Detecciones: {self.total_detections}",
-            f"Actuales: {det_count}",
-            f"Alertas: {self.alerts_sent}",
-        ]
-        for text in info_left:
-            cv2.putText(frame, text, (10, y), FONT, 0.5, COLOR_TEXT, 1)
-            y += 25
+        # Estado
+        if sin_casco > 0:
+            estado = f"⚠️ {sin_casco} SIN CASCO"
+            estado_color = COLOR_WITHOUT_HELMET
+        elif cascos > 0:
+            estado = f"✅ {cascos} CON CASCO"
+            estado_color = COLOR_WITH_HELMET
+        else:
+            estado = "👀 Buscando..."
+            estado_color = COLOR_WARNING
         
-        # Info derecha
-        y = h - panel_h + 25
-        frame_color = COLOR_WITHOUT_HELMET if self.frames_no_helmet > 0 else COLOR_WITH_HELMET
+        y = h - panel_h + 30
+        cv2.putText(frame, estado, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 
+                   0.8, estado_color, 2)
+        cv2.putText(frame, f"Alertas: {self.alerts_sent}", (10, y + 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_TEXT, 1)
         
-        info_right = [
-            (f"Sin casco: {self.frames_no_helmet}/{FRAMES_THRESHOLD}", frame_color),
-            (f"FPS: {fps:.1f}", COLOR_TEXT),
-            (f"Tiempo: {hrs:02d}:{mins:02d}:{secs:02d}", COLOR_TEXT),
-        ]
-        for text, color in info_right:
-            cv2.putText(frame, text, (w // 2, y), FONT, 0.5, color, 1)
-            y += 25
+        # Derecha
+        cv2.putText(frame, f"FPS: {fps:.0f}", (w - 150, y),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_TEXT, 1)
+        cv2.putText(frame, f"Tiempo: {mins:02d}:{secs:02d}", (w - 150, y + 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_TEXT, 1)
         
         # Cooldown
         if self.last_alert:
             remaining = ALERT_COOLDOWN - (datetime.now() - self.last_alert).total_seconds()
             if remaining > 0:
                 cv2.putText(frame, f"Cooldown: {remaining:.0f}s", 
-                           (10, h - 10), FONT, 0.5, COLOR_WARNING, 1)
+                           (w//2 - 60, y + 15), cv2.FONT_HERSHEY_SIMPLEX, 
+                           0.6, COLOR_WARNING, 2)
     
     def run(self):
-        """Ejecuta el sistema"""
         logger.info("🎥 Iniciando captura...")
         
-        # Abrir cámara
         cap = cv2.VideoCapture(CAMERA_INDEX)
         
         if not cap.isOpened():
             logger.error(f"❌ No se pudo abrir cámara {CAMERA_INDEX}")
-            logger.error("   Prueba CAMERA_INDEX=1 en .env")
             return
         
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
@@ -380,10 +386,14 @@ class HelmetDetectionSystem:
         logger.info(f"✅ Cámara: {w}x{h}")
         logger.info("")
         logger.info("🎮 CONTROLES:")
-        logger.info("   Q - Salir | R - Reset | S - Screenshot | P - Pausa")
+        logger.info("   Q/ESC - Salir")
+        logger.info("   S     - Guardar screenshot")
+        logger.info("   R     - Resetear alertas")
+        logger.info("   P     - Pausar")
         logger.info("")
         
         paused = False
+        window_name = 'Deteccion de Cascos - SENATI (Q para salir)'
         
         try:
             while True:
@@ -397,32 +407,39 @@ class HelmetDetectionSystem:
                 else:
                     processed = frame.copy()
                     cv2.putText(processed, "PAUSADO - Presiona P", 
-                               (10, 30), FONT, 0.8, COLOR_WARNING, 2)
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
+                               0.8, COLOR_WARNING, 2)
                 
-                cv2.imshow('Detección de Cascos - SENATI', processed)
+                cv2.imshow(window_name, processed)
                 
+                # Esperar tecla (importante: waitKey debe ser > 0)
                 key = cv2.waitKey(1) & 0xFF
                 
-                if key == ord('q'):
+                # Múltiples formas de salir
+                if key == ord('q') or key == ord('Q') or key == 27:  # 27 = ESC
                     logger.info("Saliendo...")
                     break
-                elif key == ord('r'):
+                elif key == ord('r') or key == ord('R'):
                     self.frames_no_helmet = 0
                     self.last_alert = None
                     logger.info("✅ Alertas reseteadas")
-                elif key == ord('s'):
+                elif key == ord('s') or key == ord('S'):
                     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    cv2.imwrite(f"screenshot_{ts}.jpg", processed)
-                    logger.info(f"📸 Screenshot guardado")
-                elif key == ord('p'):
+                    filename = f"screenshot_{ts}.jpg"
+                    cv2.imwrite(filename, processed)
+                    logger.info(f"📸 Screenshot: {filename}")
+                elif key == ord('p') or key == ord('P'):
                     paused = not paused
                     logger.info(f"{'⏸️ Pausado' if paused else '▶️ Reanudado'}")
+                
+                # Verificar si la ventana fue cerrada con X
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                    break
         
         except KeyboardInterrupt:
-            logger.info("Interrumpido")
+            logger.info("Interrumpido por usuario")
         
         finally:
-            # Estadísticas
             total_time = time.time() - self.start_time
             logger.info("")
             logger.info("=" * 60)
@@ -430,16 +447,18 @@ class HelmetDetectionSystem:
             logger.info(f"   Tiempo: {total_time:.1f}s")
             logger.info(f"   Frames: {self.frame_count}")
             logger.info(f"   FPS promedio: {self.frame_count / max(total_time, 1):.1f}")
-            logger.info(f"   Detecciones: {self.total_detections}")
-            logger.info(f"   Alertas: {self.alerts_sent}")
+            logger.info(f"   Detecciones cascos: {self.total_detections}")
+            logger.info(f"   Alertas enviadas: {self.alerts_sent}")
             logger.info("=" * 60)
             
             cap.release()
             cv2.destroyAllWindows()
+            # Forzar cierre de ventanas en Windows
+            for _ in range(5):
+                cv2.waitKey(1)
 
 
 def main():
-    """Función principal"""
     print_config()
     
     print("\n" + "=" * 70)
