@@ -1,135 +1,131 @@
 # setup.py
 """
-Script de configuración automática del Sistema de Detección de Cascos
-Versión Mejorada con más validaciones y opciones
+Configurador automático del Sistema de Detección de Cascos
 """
 
 import os
 import sys
 import shutil
-from pathlib import Path
 import subprocess
 import platform
+from pathlib import Path
 
-def print_header(text):
-    """Imprime un encabezado formateado"""
-    print("\n" + "="*80)
-    print(f"  {text}".center(80))
-    print("="*80 + "\n")
 
-def print_step(step_num, total_steps, description):
-    """Imprime el paso actual"""
-    print(f"\n[{step_num}/{total_steps}] {description}")
-    print("-" * 80)
+def header(text):
+    print("\n" + "=" * 70)
+    print(f"  {text}".center(70))
+    print("=" * 70 + "\n")
 
-def check_python_version():
-    """Verifica la versión de Python"""
-    print("🔍 Verificando versión de Python...")
-    version = sys.version_info
+
+def step(num, total, desc):
+    print(f"\n[{num}/{total}] {desc}")
+    print("-" * 70)
+
+
+def check_python():
+    """Verifica versión de Python"""
+    print("🔍 Verificando Python...")
+    v = sys.version_info
     
-    if version.major < 3 or (version.major == 3 and version.minor < 8):
-        print(f"❌ Python {version.major}.{version.minor} detectado")
-        print("   Se requiere Python 3.8 o superior")
-        print("\n📥 Descarga Python desde: https://www.python.org/downloads/")
+    if v.major < 3 or (v.major == 3 and v.minor < 8):
+        print(f"❌ Python {v.major}.{v.minor} - Se requiere 3.8+")
+        print("   Descarga desde: python.org/downloads")
         return False
     
-    print(f"✅ Python {version.major}.{version.minor}.{version.micro}")
-    
-    # Información del sistema
-    print(f"   Sistema: {platform.system()} {platform.release()}")
-    print(f"   Arquitectura: {platform.machine()}")
-    
+    print(f"✅ Python {v.major}.{v.minor}.{v.micro}")
+    print(f"   Sistema: {platform.system()} {platform.machine()}")
     return True
 
-def create_directories():
-    """Crea las carpetas necesarias"""
-    print("📁 Creando estructura de directorios...")
+
+def create_dirs():
+    """Crea estructura de carpetas"""
+    print("📁 Creando directorios...")
     
-    directories = {
-        'models': 'Modelos entrenados',
-        'assets': 'Recursos (audio, imágenes)',
+    dirs = {
+        'models': 'Modelos .pt',
+        'assets': 'Audio y recursos',
         'logs': 'Archivos de log',
         'data': 'Datos del sistema',
-        'data/detections': 'Capturas de detecciones',
+        'data/detections': 'Capturas',
     }
     
-    for directory, description in directories.items():
-        path = Path(directory)
+    for d, desc in dirs.items():
+        path = Path(d)
         if not path.exists():
             path.mkdir(parents=True)
-            print(f"   ✅ Creado: {directory:<20} ({description})")
+            print(f"   ✅ Creado: {d}")
         else:
-            print(f"   ⏭️  Existe: {directory:<20} ({description})")
-    
+            print(f"   ⏭️  Existe: {d}")
     return True
 
-def install_dependencies():
-    """Instala las dependencias necesarias"""
+
+def install_deps():
+    """Instala dependencias"""
     print("📦 Instalando dependencias...")
     
-    if not Path('requirements.txt').exists():
-        print("   ❌ No se encontró requirements.txt")
+    req_file = Path('requirements.txt')
+    if not req_file.exists():
+        print("   ❌ requirements.txt no encontrado")
         return False
     
+    print("   ⏳ Esto puede tomar varios minutos...")
+    
     try:
-        # Leer requirements
-        with open('requirements.txt', 'r') as f:
-            requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-        
-        print(f"   📋 {len(requirements)} paquetes por instalar")
-        print("   ⏳ Esto puede tomar varios minutos...")
-        
         # Actualizar pip
-        print("\n   Actualizando pip...")
-        subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'],
-            capture_output=True,
-            check=True
-        )
+        subprocess.run([sys.executable, '-m', 'pip', 'install', 
+                       '--upgrade', 'pip'], capture_output=True, check=True)
         
-        # Instalar dependencias
-        print("   Instalando paquetes...")
+        # Instalar requirements
         result = subprocess.run(
             [sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
-            capture_output=True,
-            text=True
+            capture_output=True, text=True
         )
         
         if result.returncode == 0:
-            print("   ✅ Dependencias instaladas correctamente")
-            
-            # Mostrar paquetes instalados
-            print("\n   📊 Verificando instalación...")
-            key_packages = ['ultralytics', 'opencv-python', 'torch', 'pygame', 'twilio']
-            
-            for package in key_packages:
-                try:
-                    __import__(package.replace('-', '_'))
-                    print(f"      ✅ {package}")
-                except ImportError:
-                    print(f"      ❌ {package} - No instalado")
-            
+            print("   ✅ Dependencias instaladas")
             return True
         else:
-            print(f"   ❌ Error instalando dependencias:")
-            print(f"   {result.stderr[:500]}")
+            print(f"   ❌ Error: {result.stderr[:300]}")
             return False
-            
     except Exception as e:
         print(f"   ❌ Error: {e}")
         return False
 
+
+def test_imports():
+    """Prueba imports críticos"""
+    print("🧪 Verificando módulos...")
+    
+    modules = {
+        'cv2': 'OpenCV',
+        'torch': 'PyTorch',
+        'ultralytics': 'YOLOv8',
+        'pygame': 'Audio',
+        'numpy': 'NumPy',
+    }
+    
+    failed = []
+    for mod, name in modules.items():
+        try:
+            __import__(mod)
+            print(f"   ✅ {name}")
+        except ImportError:
+            print(f"   ❌ {name}")
+            failed.append(mod)
+    
+    return len(failed) == 0
+
+
 def check_model():
-    """Verifica si existe el modelo"""
-    print("🤖 Verificando modelo YOLOv8...")
+    """Verifica el modelo"""
+    print("🤖 Verificando modelo...")
     
     model_path = Path('models/best.pt')
     
     if model_path.exists():
-        size_mb = model_path.stat().st_size / (1024 * 1024)
-        print(f"   ✅ Modelo encontrado ({size_mb:.1f} MB)")
+        size = model_path.stat().st_size / (1024 * 1024)
+        print(f"   ✅ Modelo encontrado ({size:.1f} MB)")
         
-        # Validar que sea un modelo válido
         try:
             from ultralytics import YOLO
             model = YOLO(str(model_path))
@@ -137,417 +133,203 @@ def check_model():
             print(f"   📊 Clases: {list(model.names.values())}")
             return True
         except Exception as e:
-            print(f"   ⚠️  Modelo corrupto o inválido: {e}")
+            print(f"   ⚠️  Modelo inválido: {e}")
             return False
     else:
         print("   ⚠️  Modelo NO encontrado")
-        print("\n   📝 OPCIONES PARA OBTENER EL MODELO:")
-        print("")
-        print("   1️⃣  Entrenar en Google Colab (RECOMENDADO)")
-        print("       • Abre train_colab_complete.py en Colab")
-        print("       • Ejecuta todas las celdas")
-        print("       • Descarga best.pt")
-        print("       • Colócalo en: models/best.pt")
-        print("")
-        print("   2️⃣  Descargar modelo pre-entrenado")
-        print("       • Busca en Roboflow Universe")
-        print("       • Tema: 'Safety Helmet Detection'")
-        print("       • Formato: YOLOv8")
-        print("       • Colócalo en: models/best.pt")
-        print("")
-        print("   3️⃣  Usar modelo genérico (menos preciso)")
-        print("       • El sistema descargará yolov8n.pt")
-        print("       • No está entrenado para cascos")
-        print("")
+        print("""
+   📝 OPCIONES:
+   
+   1️⃣  Entrenar en Google Colab (RECOMENDADO)
+       • Sube train_colab.py a colab.google.com
+       • Activa GPU y ejecuta todas las celdas
+       • Descarga best.pt → models/
+   
+   2️⃣  Descargar de Roboflow Universe
+       • Busca 'Safety Helmet Detection'
+       • Descarga formato YOLOv8
+       • Coloca en models/best.pt
+""")
         return False
 
-def create_env_file():
-    """Crea archivo .env desde .env.example"""
-    print("📝 Configurando variables de entorno...")
+
+def create_env():
+    """Crea archivo .env"""
+    print("📝 Configurando .env...")
     
-    env_example = Path('.env.example')
     env_file = Path('.env')
+    env_example = Path('.env.example')
     
     if env_file.exists():
-        print("   ⏭️  Archivo .env ya existe")
+        print("   ⏭️  .env ya existe")
         return True
     
-    if not env_example.exists():
-        print("   ⚠️  No se encontró .env.example")
-        return False
-    
-    try:
+    if env_example.exists():
         shutil.copy(env_example, env_file)
-        print("   ✅ Archivo .env creado desde .env.example")
-        print("   📝 Edita .env para personalizar configuración")
+        print("   ✅ .env creado desde .env.example")
         return True
-    except Exception as e:
-        print(f"   ❌ Error creando .env: {e}")
-        return False
-
-def setup_twilio():
-    """Guía para configurar Twilio"""
-    print("📱 Configuración de WhatsApp/Twilio...")
-    
-    print("\n   ¿Deseas configurar notificaciones por WhatsApp ahora? (s/n): ", end='')
-    try:
-        response = input().strip().lower()
-    except KeyboardInterrupt:
-        print("\n   ⏭️  Omitido")
-        return True
-    
-    if response == 's':
-        print("\n   📝 PASOS PARA CONFIGURAR TWILIO:")
-        print("   " + "="*76)
-        print("   1. Crea cuenta gratuita:")
-        print("      https://www.twilio.com/try-twilio")
-        print("")
-        print("   2. En el Dashboard de Twilio, copia:")
-        print("      • Account SID")
-        print("      • Auth Token")
-        print("")
-        print("   3. Configura WhatsApp Sandbox:")
-        print("      • Console → Messaging → Try it out → WhatsApp")
-        print("      • Envía el código desde tu WhatsApp al número de Twilio")
-        print("")
-        print("   4. Edita el archivo .env con tus credenciales:")
-        print("      TWILIO_ACCOUNT_SID=tu_account_sid")
-        print("      TWILIO_AUTH_TOKEN=tu_auth_token")
-        print("      DESTINATION_PHONE=+51xxxxxxxxx")
-        print("      ENABLE_WHATSAPP=true")
-        print("   " + "="*76)
-        
-        print("\n   Presiona Enter cuando hayas completado la configuración...")
-        try:
-            input()
-        except KeyboardInterrupt:
-            print("\n   ⏭️  Configuración pendiente")
-            return True
-        
-        # Verificar configuración
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-            
-            account_sid = os.getenv('TWILIO_ACCOUNT_SID', '')
-            
-            if account_sid and 'tu_account_sid' not in account_sid:
-                print("   ✅ Credenciales configuradas en .env")
-                return True
-            else:
-                print("   ⚠️  Credenciales aún no configuradas")
-                print("   💡 Puedes configurarlas más tarde editando .env")
-                return False
-        except:
-            print("   ⚠️  No se pudo verificar .env")
-            return False
     else:
-        print("   ⏭️  WhatsApp omitido")
-        print("   💡 Para habilitar después: ENABLE_WHATSAPP=true en .env")
+        # Crear .env básico
+        content = """# Configuración básica
+CONFIDENCE_THRESHOLD=0.5
+ENABLE_WHATSAPP=false
+ENABLE_AUDIO=true
+CAMERA_INDEX=0
+"""
+        env_file.write_text(content)
+        print("   ✅ .env básico creado")
         return True
+
 
 def test_camera():
-    """Verifica que la cámara funcione"""
+    """Prueba la cámara"""
     print("🎥 Probando cámara...")
     
     try:
         import cv2
         
-        print("   Intentando abrir cámara...")
-        cap = cv2.VideoCapture(0)
+        for idx in [0, 1, 2]:
+            cap = cv2.VideoCapture(idx)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret:
+                    h, w = frame.shape[:2]
+                    print(f"   ✅ Cámara {idx}: {w}x{h}")
+                    cap.release()
+                    return True
+                cap.release()
         
-        if cap.isOpened():
-            ret, frame = cap.read()
-            
-            if ret:
-                h, w = frame.shape[:2]
-                print(f"   ✅ Cámara funcionando")
-                print(f"   📐 Resolución: {w}x{h}")
-                cap.release()
-                return True
-            else:
-                print("   ⚠️  Cámara abierta pero no captura frames")
-                cap.release()
-                return False
-        else:
-            print("   ❌ No se pudo abrir la cámara")
-            print("\n   🔧 SOLUCIONES:")
-            print("      • Verifica que la cámara esté conectada")
-            print("      • Cierra otras apps que usen la cámara")
-            print("      • Prueba CAMERA_INDEX=1 en .env")
-            print("      • En Windows: Verifica permisos en Configuración")
-            return False
-            
+        print("   ❌ No se encontró cámara")
+        print("   🔧 Verifica conexión o cambia CAMERA_INDEX en .env")
+        return False
     except Exception as e:
-        print(f"   ❌ Error probando cámara: {e}")
+        print(f"   ❌ Error: {e}")
         return False
 
-def create_test_audio():
-    """Crea un archivo de audio de prueba"""
-    print("🔊 Creando archivo de alerta de audio...")
+
+def create_audio():
+    """Crea archivo de audio"""
+    print("🔊 Creando audio de alerta...")
     
     try:
         import numpy as np
         from scipy.io import wavfile
         
-        sample_rate = 44100
+        sr = 44100
         duration = 1.5
-        frequency = 880
+        freq = 880
         
-        t = np.linspace(0, duration, int(sample_rate * duration))
+        t = np.linspace(0, duration, int(sr * duration))
         envelope = np.exp(-3 * t)
-        audio_data = np.sin(2 * np.pi * frequency * t) * envelope * 0.3
-        audio_data = (audio_data * 32767).astype(np.int16)
+        audio = np.sin(2 * np.pi * freq * t) * envelope * 0.3
+        audio = (audio * 32767).astype(np.int16)
         
-        wavfile.write('assets/alert.wav', sample_rate, audio_data)
-        print("   ✅ Archivo alert.wav creado")
-        return True
-        
-    except Exception as e:
-        print(f"   ⚠️  No se pudo crear archivo de audio: {e}")
-        print("   El sistema lo creará automáticamente al ejecutarse")
-        return True
-
-def test_imports():
-    """Prueba que todos los imports funcionen"""
-    print("🧪 Probando imports de módulos...")
-    
-    modules_to_test = {
-        'cv2': 'OpenCV',
-        'torch': 'PyTorch',
-        'ultralytics': 'YOLOv8',
-        'pygame': 'Pygame (audio)',
-        'twilio': 'Twilio',
-        'numpy': 'NumPy',
-        'scipy': 'SciPy',
-    }
-    
-    failed = []
-    
-    for module, name in modules_to_test.items():
-        try:
-            __import__(module)
-            print(f"   ✅ {name}")
-        except ImportError as e:
-            print(f"   ❌ {name}: {e}")
-            failed.append(module)
-    
-    if failed:
-        print(f"\n   ⚠️  {len(failed)} módulos faltantes")
-        print("   Ejecuta: pip install -r requirements.txt")
-        return False
-    
-    return True
-
-def create_readme():
-    """Crea README con instrucciones"""
-    print("📄 Creando README.md...")
-    
-    readme_content = """# Sistema de Detección de Cascos de Seguridad
-
-Sistema inteligente de detección de cascos usando YOLOv8 con alertas por WhatsApp.
-
-## 🚀 Inicio Rápido
-
-```bash
-# 1. Instalar dependencias
-pip install -r requirements.txt
-
-# 2. Configurar (ejecutar una vez)
-python setup.py
-
-# 3. Entrenar modelo en Colab
-# Abre train_colab_complete.py en Google Colab
-
-# 4. Ejecutar sistema
-python main.py
-```
-
-## ⚙️ Configuración
-
-Edita `.env` para personalizar:
-- Umbrales de detección
-- Credenciales de Twilio
-- Configuración de cámara
-- Parámetros de alertas
-
-## 🎮 Controles
-
-- `q` - Salir
-- `r` - Resetear alertas
-- `s` - Guardar screenshot
-- `p` - Pausar/Reanudar
-- `d` - Toggle debug
-
-## 📝 Archivos Principales
-
-- `main.py` - Sistema principal
-- `config.py` - Configuración
-- `setup.py` - Script de configuración
-- `test_model.py` - Pruebas del modelo
-- `.env` - Variables de entorno
-
-## 🆘 Soporte
-
-Para problemas, revisa los logs en `logs/detecciones.log`
-"""
-    
-    try:
-        with open('README.md', 'w', encoding='utf-8') as f:
-            f.write(readme_content)
-        print("   ✅ README.md creado")
+        Path('assets').mkdir(exist_ok=True)
+        wavfile.write('assets/alert.wav', sr, audio)
+        print("   ✅ alert.wav creado")
         return True
     except Exception as e:
-        print(f"   ❌ Error creando README: {e}")
-        return False
+        print(f"   ⚠️  No se pudo crear: {e}")
+        print("   Se creará automáticamente al ejecutar")
+        return True
 
-def show_next_steps(model_exists):
-    """Muestra los próximos pasos"""
-    print_header("🎯 PRÓXIMOS PASOS")
-    
-    if not model_exists:
-        print("📌 PRIORIDAD: OBTENER MODELO")
-        print("=" * 80)
-        print("")
-        print("1️⃣  Entrenar en Google Colab (RECOMENDADO):")
-        print("    • Abre Google Colab: https://colab.research.google.com")
-        print("    • Sube el archivo: train_colab_complete.py")
-        print("    • Ejecuta todas las celdas (1-3 horas)")
-        print("    • Descarga best.pt")
-        print("    • Colócalo en: models/best.pt")
-        print("")
-        print("2️⃣  Configurar sistema:")
-        print("    • Edita .env con tus preferencias")
-        print("    • (Opcional) Configura Twilio para WhatsApp")
-        print("")
-        print("3️⃣  Probar modelo:")
-        print("    python test_model.py")
-        print("")
-        print("4️⃣  Ejecutar sistema:")
-        print("    python main.py")
-    else:
-        print("¡Sistema listo para usar!")
-        print("=" * 80)
-        print("")
-        print("1️⃣  Probar modelo:")
-        print("    python test_model.py")
-        print("")
-        print("2️⃣  Configurar alertas (opcional):")
-        print("    • Edita .env con credenciales de Twilio")
-        print("    • ENABLE_WHATSAPP=true")
-        print("")
-        print("3️⃣  Ejecutar sistema:")
-        print("    python main.py")
-        print("")
-        print("4️⃣  Controles durante ejecución:")
-        print("    • q: Salir")
-        print("    • r: Resetear alertas")
-        print("    • s: Guardar screenshot")
-        print("    • p: Pausar/Reanudar")
-    
-    print("")
-    print("=" * 80)
 
 def main():
-    """Función principal de configuración"""
-    print_header("🛡️ CONFIGURADOR DEL SISTEMA DE DETECCIÓN DE CASCOS")
+    """Función principal"""
+    header("🛡️ CONFIGURADOR - DETECCIÓN DE CASCOS")
     
-    print("Este script configurará automáticamente tu entorno.")
-    print("Tiempo estimado: 5-10 minutos")
-    print("")
-    print("Presiona Enter para comenzar o Ctrl+C para cancelar...")
+    print("Este script configurará tu entorno automáticamente.")
+    print("Tiempo estimado: 3-5 minutos\n")
+    print("Presiona Enter para comenzar...")
     
     try:
         input()
     except KeyboardInterrupt:
-        print("\n\n❌ Configuración cancelada")
+        print("\n❌ Cancelado")
         return
     
-    # Pasos de configuración
+    # Pasos
     steps = [
-        ("Versión de Python", check_python_version),
-        ("Crear directorios", create_directories),
-        ("Crear archivo .env", create_env_file),
-        ("Instalar dependencias", install_dependencies),
-        ("Probar imports", test_imports),
-        ("Verificar modelo", check_model),
-        ("Configurar Twilio", setup_twilio),
-        ("Probar cámara", test_camera),
-        ("Crear audio de alerta", create_test_audio),
-        ("Crear README", create_readme),
+        ("Python", check_python),
+        ("Directorios", create_dirs),
+        ("Archivo .env", create_env),
+        ("Dependencias", install_deps),
+        ("Imports", test_imports),
+        ("Modelo", check_model),
+        ("Cámara", test_camera),
+        ("Audio", create_audio),
     ]
     
     results = []
-    total_steps = len(steps)
-    model_exists = False
+    model_ok = False
     
-    for i, (step_name, step_func) in enumerate(steps, 1):
-        print_step(i, total_steps, step_name)
-        
+    for i, (name, func) in enumerate(steps, 1):
+        step(i, len(steps), name)
         try:
-            result = step_func()
-            results.append((step_name, result))
-            
-            if step_name == "Verificar modelo":
-                model_exists = result
-            
-            if not result and step_name in ["Versión de Python", "Instalar dependencias"]:
-                print(f"\n❌ Error crítico en: {step_name}")
-                print("No se puede continuar sin resolver este problema.")
-                return
-                
+            result = func()
+            results.append((name, result))
+            if name == "Modelo":
+                model_ok = result
         except Exception as e:
-            print(f"❌ Error en {step_name}: {e}")
-            results.append((step_name, False))
+            print(f"   ❌ Error: {e}")
+            results.append((name, False))
     
-    # Resumen final
-    print_header("📊 RESUMEN DE CONFIGURACIÓN")
+    # Resumen
+    header("📊 RESUMEN")
     
-    critical_steps = ["Versión de Python", "Instalar dependencias", "Probar imports"]
-    important_steps = ["Verificar modelo", "Probar cámara"]
+    critical = ["Python", "Dependencias", "Imports"]
     
-    for step_name, result in results:
-        if step_name in critical_steps:
-            status = "✅" if result else "❌"
-        elif step_name in important_steps:
-            status = "✅" if result else "⚠️"
+    for name, result in results:
+        if name in critical:
+            icon = "✅" if result else "❌"
         else:
-            status = "✅" if result else "⏭️"
-        
-        print(f"{status} {step_name}")
+            icon = "✅" if result else "⚠️"
+        print(f"   {icon} {name}")
     
-    # Contar éxitos
-    success_count = sum(1 for _, result in results if result)
-    total_count = len(results)
+    success = sum(1 for _, r in results if r)
+    print(f"\n   Completado: {success}/{len(results)}")
     
-    print("")
-    print(f"Completado: {success_count}/{total_count} pasos")
-    print("")
+    # Próximos pasos
+    header("🎯 PRÓXIMOS PASOS")
     
-    if success_count == total_count:
-        print("🎉 ¡Configuración 100% completa!")
-    elif success_count >= total_count - 2:
-        print("✅ Configuración casi completa")
-        print("Solo faltan algunos pasos opcionales.")
+    if not model_ok:
+        print("""
+1️⃣  OBTENER MODELO (PRIORITARIO):
+    • Abre colab.research.google.com
+    • Sube train_colab.py
+    • Runtime → Change runtime → GPU
+    • Ejecuta todas las celdas
+    • Descarga best.pt → models/
+
+2️⃣  Probar modelo:
+    python test_model.py
+
+3️⃣  Ejecutar sistema:
+    python main.py
+""")
     else:
-        print("⚠️  Configuración incompleta")
-        print("Revisa los errores anteriores.")
+        print("""
+1️⃣  Probar modelo:
+    python test_model.py
+
+2️⃣  Ejecutar sistema:
+    python main.py
+
+3️⃣  (Opcional) Configurar WhatsApp:
+    Edita .env con tus credenciales de Twilio
+""")
     
-    # Mostrar próximos pasos
-    show_next_steps(model_exists)
-    
-    print_header("✨ CONFIGURACIÓN FINALIZADA")
+    print("=" * 70)
     print("💡 Para más ayuda, lee README.md")
-    print("")
+    print("=" * 70)
+
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n❌ Configuración interrumpida por el usuario")
-        sys.exit(0)
+        print("\n\n❌ Interrumpido")
     except Exception as e:
-        print(f"\n\n❌ Error inesperado: {e}")
+        print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)

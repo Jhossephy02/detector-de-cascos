@@ -1,0 +1,94 @@
+# ============================================================
+# GITIGNORE - Sistema de Detección de Cascos
+# ============================================================
+
+# Entorno virtual
+venv/
+env/
+.venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Variables de entorno (contiene secretos)
+.env
+.env.local
+*.env
+
+# Modelos (muy pesados para git)
+models/*.pt
+models/*.onnx
+models/*.engine
+!models/.gitkeep
+
+# Datos y detecciones
+data/detections/*
+!data/detections/.gitkeep
+data/*.csv
+data/*.json
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Assets generados
+assets/alert.wav
+
+# Screenshots y resultados
+screenshot_*.jpg
+result_*.jpg
+result_*.mp4
+test_screenshot_*.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Runs de entrenamiento (pesados)
+runs/
+
+# Datasets descargados
+datasets/
+*-*/  # Datasets de Roboflow
+
+# Temporales
+*.tmp
+*.temp
+*.bak

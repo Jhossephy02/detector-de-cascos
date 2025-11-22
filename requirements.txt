@@ -1,0 +1,46 @@
+# ============================================================
+# DEPENDENCIAS - Sistema de Detección de Cascos YOLOv8
+# ============================================================
+
+# Core - Deep Learning
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Computer Vision
+opencv-python>=4.8.0
+opencv-python-headless>=4.8.0
+
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+Pillow>=9.5.0
+
+# Audio
+pygame>=2.5.0
+
+# Messaging (WhatsApp)
+twilio>=8.0.0
+
+# Configuration
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Utilities
+tqdm>=4.65.0
+requests>=2.31.0
+pathlib2>=2.3.0
+
+# Visualization (opcional para análisis)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Roboflow (para descargar datasets)
+roboflow>=1.1.0
+
+# Logging mejorado
+colorlog>=6.7.0
+
+# Para crear sonidos de alerta
+soundfile>=0.12.0
